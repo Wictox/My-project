@@ -6,7 +6,6 @@ public class itemdraghandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
     Transform OriginalParent;
     CanvasGroup canvasGroup;
     
-    // NEW: You need to drag your actual physical item prefab into this slot in the Unity Inspector!
     public GameObject physicalItemPrefab; 
     
     void Start()
@@ -38,6 +37,7 @@ public class itemdraghandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
 
         if (dropslot != null)
         {  
+            // 1. Move/Swap items between slots
             if (dropslot.currentItem != null)
             {
                 dropslot.currentItem.transform.SetParent(originalSlot.transform); 
@@ -53,59 +53,54 @@ public class itemdraghandler : MonoBehaviour, IBeginDragHandler, IDragHandler, I
             dropslot.currentItem = gameObject; 
             GetComponent<RectTransform>().anchoredPosition = Vector2.zero; 
         }
+        else if (eventData.pointerEnter != null)
+        {
+            // 2. We hit the UI (Inventory background, buttons, etc). Snap back.
+            transform.SetParent(OriginalParent);
+            GetComponent<RectTransform>().anchoredPosition = Vector2.zero; 
+        }
         else
         {
-            // FIX: The logic here is cleaned up.
-            if (!IsWithinInventory(eventData.position, eventData.pressEventCamera))
-            {
-                // We are OUTSIDE the inventory. Throw it!
-                DropItem(originalSlot);
-            }
-            else
-            {
-                // We are INSIDE the inventory, but missed a slot. Snap it back.
-                transform.SetParent(OriginalParent);
-                GetComponent<RectTransform>().anchoredPosition = Vector2.zero; 
-            }
+            // 3. We are hovering over the world/grass. Drop it!
+            DropItem(originalSlot);
         }
-    }
-
-    // FIX: Changed mousePosition to position, and added camera support for better UI detection
-    bool IsWithinInventory(Vector2 position, Camera eventCamera)
-    {
-        RectTransform inventoryRect = OriginalParent.parent.GetComponent<RectTransform>();
-        return RectTransformUtility.RectangleContainsScreenPoint(inventoryRect, position, eventCamera);
     }
 
     void DropItem(Slot originalSlot)
     {
-        // 1. Clear the UI slot
         originalSlot.currentItem = null; 
 
-        // 2. Find the player (Make sure your player has the tag "Player" in Unity!)
         GameObject player = GameObject.FindGameObjectWithTag("Player");
         if (player == null)
         {
-            Debug.LogError("Could not find Player to drop item next to!");
+            Debug.LogError("Could not find Player! Make sure your Player object has the tag 'Player'.");
             return;
         }
 
-        // 3. Random drop position (Spawns slightly around the player so it doesn't get stuck inside them)
-        // Since you are making a 2D top-down game, we use X and Y.
-        Vector2 randomOffset = new Vector2(Random.Range(-1.5f, 1.5f), Random.Range(-1.5f, 1.5f));
+        Vector2 randomOffset = new Vector2(Random.Range(-1.0f, 1.0f), Random.Range(-1.0f, 1.0f));
         Vector2 dropPosition = (Vector2)player.transform.position + randomOffset;
 
-        // 4. Instantiate the physical item in the world
         if (physicalItemPrefab != null)
         {
-            Instantiate(physicalItemPrefab, dropPosition, Quaternion.identity);
+            // SPAWN ONLY ONE THING: The floor item prefab
+            GameObject droppedItem = Instantiate(physicalItemPrefab, dropPosition, Quaternion.identity);
+            
+            // Clean up the name and fix scale
+            droppedItem.name = physicalItemPrefab.name.Replace("(Clone)", ""); 
+            droppedItem.transform.localScale = Vector3.one; 
+
+            // Apply the bounce effect to the NEW floor item
+            if (droppedItem.TryGetComponent<BounceEffect>(out BounceEffect bounce))
+            {
+                bounce.StartBounce();
+            }
         }
         else
         {
             Debug.LogWarning("You forgot to assign the physicalItemPrefab on " + gameObject.name);
         }
 
-        // 5. Destroy this UI item
+        // Destroy the UI item from the inventory
         Destroy(gameObject);
     }   
 }
